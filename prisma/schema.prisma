@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// One jeweller in the prototype; karigars work for several jewellers in real life.
+model Karigar {
+  id         String   @id @default(cuid())
+  name       String
+  phone      String
+  speciality String
+  city       String
+  createdAt  DateTime @default(now())
+  slips      Slip[]
+}
+
+// A gold slip: gold issued to a karigar for job-work.
+// status: ISSUED -> WORKING -> RETURNED -> SETTLED
+model Slip {
+  id                String    @id @default(cuid())
+  number            Int       @unique
+  weightGrams       Float
+  purity            String
+  job               String
+  isWedding         Boolean   @default(false)
+  dueDate           DateTime
+  wastageAgreedPct  Float
+  status            String    @default("ISSUED")
+  pieceWeightGrams  Float?
+  scrapWeightGrams  Float?
+  wastageActualPct  Float?
+  fairFlag          String?
+  jewellerApproved  Boolean   @default(false)
+  karigarApproved   Boolean   @default(false)
+  makingCharges     Float?
+  paidAt            DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  karigarId         String
+  karigar           Karigar   @relation(fields: [karigarId], references: [id])
+  entries           LedgerEntry[]
+  payment           Payment?
+}
+
+// Append-only, hash-linked record. Tampering shows.
+model LedgerEntry {
+  id        String   @id @default(cuid())
+  kind      String
+  text      String
+  hash      String
+  createdAt DateTime @default(now())
+  slipId    String?
+  slip      Slip?    @relation(fields: [slipId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  slipId    String   @unique
+  slip      Slip     @relation(fields: [slipId], references: [id], onDelete: Cascade)
+  amount    Float
+  method    String   @default("UPI")
+  status    String   @default("PAID")
+  createdAt DateTime @default(now())
+}
