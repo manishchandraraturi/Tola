@@ -13,6 +13,11 @@ export async function POST(req: NextRequest) {
   if (!slip) return NextResponse.json({ error: "Slip not found." }, { status: 404 });
   if (slip.status !== "RETURNED")
     return NextResponse.json({ error: "Settler works on slips that are back and weighed." }, { status: 400 });
+  if (slip.disputed)
+    return NextResponse.json(
+      { error: `Slip #${slip.number} has an open dispute — the Settler waits until it is resolved.` },
+      { status: 409 }
+    );
 
   const amount = slip.makingCharges ?? makingCharges(slip.weightGrams);
   const wastage = slip.wastageActualPct ?? 0;

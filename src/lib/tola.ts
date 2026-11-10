@@ -126,7 +126,7 @@ export function watcherAlerts(
       out.push({
         ...base,
         level: "urgent",
-        message: `Slip #${s.number} (${s.job}) is due ${daysLeft === 0 ? "today" : daysLeft === 1 ? "tomorrow" : `in ${daysLeft} days`}. A gentle reminder to ${s.karigarName} goes out on WhatsApp.`,
+        message: `Slip #${s.number} (${s.job}) is due ${daysLeft === 0 ? "today" : daysLeft === 1 ? "tomorrow" : `in ${daysLeft} days`}. A reminder to ${s.karigarName} is queued for WhatsApp.`,
       });
     }
   }
@@ -146,11 +146,15 @@ export function scribeParse(text: string) {
   const wedding = /(wedding|marriage|ಮದುವೆ|शादी)/.test(t);
   const due = parseDue(t);
   let job = /(?:job|job:|piece|for|of)\s*[:]?\s*([a-z ]{3,40})/.exec(t)?.[1]?.trim();
-  if (!job) {
-    // e.g. "25.4 grams 22K necklace set, wastage 3" — take the words after the purity.
-    job = /\b(?:24|22|18)\s*k[a-z]*\.?\s+([a-z][a-z ]{2,30}?)(?:\s*,|\s+wastage|\s+due|\s+in\s|\s+for\s|$)/.exec(t)?.[1]?.trim();
+  // e.g. "25.4 grams 22K necklace set, wastage 3" — the words after the purity
+  // are the job. Prefer this when it matches: "for <name>" after the job would
+  // otherwise be mistaken for the job itself.
+  const jobAfterPurity = /\b(?:24|22|18)\s*k[a-z]*\.?\s+([a-z][a-z ]{2,30}?)(?:\s*,|\s+wastage|\s+due|\s+in\s|\s+for\s|$)/.exec(t)?.[1]?.trim();
+  if (jobAfterPurity) {
+    job = jobAfterPurity;
+  } else if (job) {
+    job = job.replace(/\s+(due|on|by|for|wedding|marriage|wastage).*$/, "").trim();
   }
-  if (job) job = job.replace(/\s+(due|on|by|for|wedding|marriage|wastage).*$/, "").trim();
   if (!job) job = undefined;
   return { weight, purity, wastage, wedding, due, job };
 }
@@ -201,7 +205,8 @@ export async function reseed() {
   await db.slip.deleteMany({});
   await db.karigar.deleteMany({});
 
-  const day = (y: number, m: number, d: number, h = 10) => new Date(y, m - 1, d, h, 0, 0);
+  const day = (y: number, m: number, d: number, h = 10, min = 0) =>
+    new Date(y, m - 1, d, h, min, 0);
 
   const ravi = await db.karigar.create({
     data: { name: "Ravi Kumar", phone: "+91 98450 11223", speciality: "Necklace sets", city: "Bengaluru" },
@@ -263,6 +268,29 @@ export async function reseed() {
     },
   });
 
+  // Slip #215 came back before this build, so the return route never ran for it.
+  // Compute its fair-wastage verdict the same way the route does: from Meena's
+  // settled history, and store it so the Fair-wastage console shows it.
+  const meenaHistory = await db.slip.findMany({
+    where: { karigarId: meena.id, status: "SETTLED", wastageActualPct: { not: null } },
+    select: { wastageActualPct: true },
+  });
+  const meenaVals = meenaHistory.map((h) => h.wastageActualPct as number);
+  const band215 = meenaVals.length
+    ? {
+        min: Math.min(...meenaVals),
+        max: Math.max(...meenaVals),
+        avg: Math.round((meenaVals.reduce((a, b) => a + b, 0) / meenaVals.length) * 100) / 100,
+        n: meenaVals.length,
+      }
+    : null;
+  const verdict215 = fairVerdict(
+    s215.wastageAgreedPct,
+    s215.wastageActualPct as number,
+    band215
+  );
+  await db.slip.update({ where: { id: s215.id }, data: { fairFlag: verdict215 } });
+
   await appendLedger("ISSUE", "Slip #211 issued — 12.20 g, 22K, bangle set, to Suresh Patel. Agreed wastage 3.5%.", s211.id, day(Y, 10, 20));
   await appendLedger("TAP", "Both taps done: Suresh confirmed the slip on his phone. Gold 12.20 g now shows in his account.", s211.id, day(Y, 10, 20, 10, 30));
   await appendLedger("ISSUE", "Slip #212 issued — 8.60 g, 22K, jhumkas, to Meena Naik. Agreed wastage 4%.", s212.id, day(Y, 10, 24));
@@ -275,4 +303,5 @@ export async function reseed() {
   await appendLedger("ISSUE", "Slip #215 issued — 14.00 g, 18K, ring set, to Meena Naik. Agreed wastage 3%.", s215.id, day(Y, 11, 1));
   await appendLedger("TAP", "Both taps done: Meena confirmed slip #215. Gold 14.00 g now shows in her account.", s215.id, day(Y, 11, 1, 13, 20));
   await appendLedger("RETURN", "Slip #215 returned — piece 13.35 g + scrap 0.15 g. Wastage worked out at 3.57%, agreed was 3%. Fair-wastage agent: within her usual range.", s215.id, day(Y, 11, 9, 16, 40));
+  await appendLedger("FLAG", `Fair-wastage on slip #215: ${verdict215}`, s215.id, day(Y, 11, 9, 16, 41));
 }

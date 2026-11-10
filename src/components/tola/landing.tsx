@@ -347,7 +347,7 @@ function TodayVsTola() {
 
 /* ------------------------------ Solution ------------------------------ */
 
-function Solution({ onOpenDashboard }: Props) {
+function Solution({ onOpenDashboard }: { onOpenDashboard: () => void }) {
   const steps = [
     { name: "ISSUE", tone: "blue" as const, body: "Weigh, snap the scale, both confirm" },
     { name: "WORK", tone: "green" as const, body: "Gold balance with the karigar visible to both" },
@@ -708,7 +708,7 @@ function Impact() {
 
 /* ------------------------------ Pricing ------------------------------ */
 
-function Pricing({ onOpenDashboard }: Props) {
+function Pricing({ onOpenDashboard }: { onOpenDashboard: () => void }) {
   const roadmap = [
     { when: "NOW", body: "Issue, return, settle with voice and photo", tone: "green" as const },
     { when: "NEXT", body: "Refiner link and customer status link", tone: "yellow" as const },

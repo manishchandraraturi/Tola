@@ -1,7 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
 import { scribeParse } from "@/lib/tola";
 
 export const dynamic = "force-dynamic";
+
+function escapeRegExp(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Match a karigar name mentioned in the text: full name if present,
+// otherwise a first-name match. Case-insensitive, on word boundaries
+// so "ravi" does not match inside another word.
+function matchKarigar(text: string, karigars: Array<{ id: string; name: string }>) {
+  const lower = text.toLowerCase();
+  for (const k of karigars) {
+    const full = k.name.toLowerCase();
+    if (full && lower.includes(full)) return k;
+  }
+  for (const k of karigars) {
+    const first = k.name.toLowerCase().split(/\s+/)[0];
+    if (!first) continue;
+    if (new RegExp(`\\b${escapeRegExp(first)}\\b`, "i").test(text)) return k;
+  }
+  return null;
+}
 
 // Scribe: speak, or snap the scale, in Kannada or Hindi.
 // Here we parse a simulated transcription (typed note) into a slip draft.
@@ -11,15 +33,20 @@ export async function POST(req: NextRequest) {
   if (!text) return NextResponse.json({ error: "Say or type something first." }, { status: 400 });
 
   const parsed = scribeParse(text);
+  const karigars = await db.karigar.findMany({ orderBy: { createdAt: "asc" } });
+  const matched = matchKarigar(text, karigars);
+
   const missing: string[] = [];
   if (!parsed.weight) missing.push("weight (say it like '25.4 grams')");
   if (!parsed.purity) missing.push("purity (say it like '22K')");
   if (!parsed.due) missing.push("due date (say it like 'due 12 Nov')");
+  if (!matched) missing.push("karigar name (say it like 'for Ravi Kumar')");
 
   const heard =
     `Heard: ${parsed.weight ? `${parsed.weight} g` : "weight not caught"}, ` +
     `${parsed.purity ?? "purity not caught"}, ` +
     `${parsed.job ? `job "${parsed.job}"` : "job not named"}, ` +
+    `${matched ? `for ${matched.name}` : "karigar not named"}, ` +
     `${parsed.wedding ? "wedding order" : "regular order"}, ` +
     `${parsed.due ? `due ${new Date(parsed.due).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : "due date not caught"}` +
     (parsed.wastage ? `, wastage ${parsed.wastage}%` : "") +
@@ -27,6 +54,8 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     parsed,
+    karigarId: matched?.id ?? null,
+    karigarName: matched?.name ?? null,
     heard,
     missing,
     note: missing.length

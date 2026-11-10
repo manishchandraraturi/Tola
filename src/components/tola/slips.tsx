@@ -89,6 +89,11 @@ export function SlipsPanel({
                       WEDDING
                     </span>
                   )}
+                  {s.disputed && (
+                    <span className="stamp" style={{ background: "var(--salmon-fill)", border: "2px solid var(--marker-red)", color: "var(--ink)" }}>
+                      DISPUTE
+                    </span>
+                  )}
                   <span className="ml-auto flex items-center gap-2">
                     <Stamp status={s.status} />
                   </span>
@@ -124,6 +129,101 @@ export function SlipsPanel({
         )}
       </div>
     </div>
+  );
+}
+
+/* ================= Dispute (both sides) ================= */
+
+// "Flag a dispute" lives on RETURNED slips for both sides. An open dispute
+// writes a DISPUTE ledger entry and blocks settlement until it is resolved.
+export function DisputeBox({
+  slip,
+  side,
+  onRefresh,
+  compact = false,
+}: {
+  slip: SlipRow;
+  side: "jeweller" | "karigar";
+  onRefresh: () => void;
+  compact?: boolean;
+}) {
+  const { toast } = useToast();
+  const [note, setNote] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  async function act(resolve: boolean) {
+    setBusy(true);
+    try {
+      await post(`/api/slips/${slip.id}/dispute`, { side, note, resolve });
+      toast({
+        title: resolve
+          ? "Dispute marked resolved — settlement can go ahead"
+          : slip.disputed
+            ? "Your side joined the dispute record"
+            : "Dispute flagged — settlement is blocked",
+        description: "The ledger got a new entry. Both sides see it.",
+      });
+      setNote("");
+      onRefresh();
+    } catch (e) {
+      toast({ title: "Could not do that", description: e instanceof Error ? e.message : "Try again", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const inputCls = compact
+    ? "mt-1 w-full border-[2px] border-ink-soft bg-white px-2 py-1 font-hand text-sm text-ink sketch-c outline-none focus:ring-2 focus:ring-[var(--gold)]"
+    : "mt-1 w-full border-[2.5px] border-ink-soft bg-white px-3 py-2 font-hand text-base text-ink sketch-c outline-none focus:ring-2 focus:ring-[var(--gold)]";
+
+  if (!slip.disputed) {
+    return (
+      <div className={`border-[2.5px] border-dashed border-ink-soft/60 bg-white ${compact ? "px-2.5 py-2" : "px-4 py-3"} sketch-c`}>
+        <p className={`font-hand text-ink-soft ${compact ? "text-sm" : "text-base"}`}>
+          Weights or charges not matching? <b className="text-ink">Flag a dispute</b> — the record
+          keeps both sides honest until it is talked out.
+        </p>
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Optional note — what does not match?"
+          className={inputCls}
+        />
+        <SketchButton tone="salmon" className="mt-2 !py-1 text-sm" disabled={busy} onClick={() => act(false)}>
+          Flag a dispute
+        </SketchButton>
+      </div>
+    );
+  }
+
+  return (
+    <SketchBox tone="salmon" variant={compact ? "c" : "b"} className={compact ? "px-2.5 py-2" : "px-4 py-3"}>
+      <p className={`font-sketch font-bold ${compact ? "text-sm" : "text-base"} text-ink`}>
+        Open dispute — settlement is blocked
+      </p>
+      {slip.disputeNote && (
+        <div className={`mt-1 whitespace-pre-line border-l-4 border-[var(--marker-red)] bg-white/70 px-2 py-1 font-hand text-ink ${compact ? "text-sm" : "text-base"}`}>
+          {slip.disputeNote}
+        </div>
+      )}
+      <input
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Add your side (optional)…"
+        className={inputCls}
+      />
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <SketchButton tone="salmon" className="!py-1 text-sm" disabled={busy || !note.trim()} onClick={() => act(false)}>
+          Add my side
+        </SketchButton>
+        <SketchButton tone="green" className="!py-1 text-sm" disabled={busy} onClick={() => act(true)}>
+          Mark the dispute resolved
+        </SketchButton>
+      </div>
+      <p className={`mt-1.5 font-hand text-ink-soft ${compact ? "text-xs" : "text-sm"}`}>
+        Either side can resolve it. Approvals and the Settler stay locked until then.
+      </p>
+    </SketchBox>
   );
 }
 
@@ -288,13 +388,21 @@ export function SlipDetail({ slip, onRefresh }: { slip: SlipRow; onRefresh: () =
             )}
           </SketchBox>
 
+          <DisputeBox slip={slip} side="jeweller" onRefresh={onRefresh} />
+
           <SketchBox tone="salmon" variant="c" className="px-4 py-4">
             <p className="font-sketch font-bold">Step 4 · settle — both must tap</p>
+            {slip.disputed && (
+              <p className="mt-2 font-hand text-base font-bold text-marker-red">
+                Locked: an open dispute blocks approvals and the Settler. Resolve it below first.
+              </p>
+            )}
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <TapChip
                 label="Jeweller"
                 checked={slip.jewellerApproved}
                 who="jeweller"
+                disabled={slip.disputed}
                 onTap={() =>
                   run(async () => {
                     const r = await post(`/api/slips/${slip.id}/approve`, { side: "jeweller" });
@@ -306,6 +414,7 @@ export function SlipDetail({ slip, onRefresh }: { slip: SlipRow; onRefresh: () =
                 label={slip.karigarName}
                 checked={slip.karigarApproved}
                 who="karigar"
+                disabled={slip.disputed}
                 onTap={() =>
                   run(async () => {
                     const r = await post(`/api/slips/${slip.id}/approve`, { side: "karigar" });
@@ -339,7 +448,7 @@ export function SlipDetail({ slip, onRefresh }: { slip: SlipRow; onRefresh: () =
               ) : (
                 <SketchButton
                   tone="blue"
-                  disabled={busy}
+                  disabled={busy || slip.disputed}
                   onClick={() =>
                     run(async () => {
                       const r = await post("/api/agents/settler", { slipId: slip.id });

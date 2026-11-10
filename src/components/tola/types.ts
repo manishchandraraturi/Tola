@@ -32,6 +32,8 @@ export type SlipRow = {
   scrapWeightGrams: number | null;
   wastageActualPct: number | null;
   fairFlag: string | null;
+  disputed: boolean;
+  disputeNote: string | null;
   jewellerApproved: boolean;
   karigarApproved: boolean;
   makingCharges: number | null;

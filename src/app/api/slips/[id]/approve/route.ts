@@ -18,6 +18,11 @@ export async function POST(
   if (!slip) return NextResponse.json({ error: "Slip not found." }, { status: 404 });
   if (slip.status !== "RETURNED")
     return NextResponse.json({ error: `Slip is ${slip.status}; approvals happen after return.` }, { status: 400 });
+  if (slip.disputed)
+    return NextResponse.json(
+      { error: "This slip has an open dispute — approvals stay blocked until both sides resolve it." },
+      { status: 409 }
+    );
   if (side !== "jeweller" && side !== "karigar")
     return NextResponse.json({ error: "side must be 'jeweller' or 'karigar'." }, { status: 400 });
 

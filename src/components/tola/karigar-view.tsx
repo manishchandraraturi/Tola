@@ -19,6 +19,7 @@ import {
   type StateResponse,
   type SlipRow,
 } from "./types";
+import { DisputeBox } from "./slips";
 import { useToast } from "@/hooks/use-toast";
 
 async function post(url: string, body?: unknown) {
@@ -31,6 +32,14 @@ async function post(url: string, body?: unknown) {
   if (!res.ok) throw new Error(data.error ?? "Something went wrong");
   return data;
 }
+
+// Feature flag: flip to true when offline mode and voice input actually ship
+// in this build. Until then the phone footer stays honest about it.
+const OFFLINE_AND_VOICE_LIVE = false;
+
+const PHONE_FOOTER_NOTE = OFFLINE_AND_VOICE_LIVE
+  ? "works offline, syncs later · voice in Kannada or Hindi"
+  : "offline mode and voice: coming in this build";
 
 export default function KarigarView({
   state,
@@ -110,7 +119,7 @@ export default function KarigarView({
                   <p className="font-hand text-sm text-ink-soft">No slips yet.</p>
                 )}
                 {mySlips.map((s) => (
-                  <MySlipRow key={s.id} slip={s} me={me?.name ?? "Karigar"} onAct={act} />
+                  <MySlipRow key={s.id} slip={s} me={me?.name ?? "Karigar"} onAct={act} onRefresh={onRefresh} />
                 ))}
               </div>
 
@@ -139,7 +148,7 @@ export default function KarigarView({
               </div>
             </div>
             <p className="mt-3 text-center font-hand text-sm text-ink-soft">
-              works offline, syncs later · voice in Kannada or Hindi
+              {PHONE_FOOTER_NOTE}
             </p>
           </div>
 
@@ -208,10 +217,12 @@ function MySlipRow({
   slip,
   me,
   onAct,
+  onRefresh,
 }: {
   slip: SlipRow;
   me: string;
   onAct: (fn: () => Promise<unknown>, done: string) => void;
+  onRefresh: () => void;
 }) {
   const due = new Date(slip.dueDate);
   return (
@@ -221,6 +232,11 @@ function MySlipRow({
         <span className="font-hand text-sm text-ink">
           {slip.job} · {slip.weightGrams.toFixed(2)} g {slip.purity}
         </span>
+        {slip.disputed && (
+          <span className="stamp" style={{ background: "var(--salmon-fill)", border: "2px solid var(--marker-red)", color: "var(--ink)" }}>
+            DISPUTE
+          </span>
+        )}
         <span className="ml-auto">
           <Stamp status={slip.status} />
         </span>
@@ -253,19 +269,28 @@ function MySlipRow({
       )}
 
       {slip.status === "RETURNED" && (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <TapChip label="Jeweller" checked={slip.jewellerApproved} who="jeweller" />
-          <TapChip
-            label="My approval"
-            checked={slip.karigarApproved}
-            who="karigar"
-            onTap={() =>
-              onAct(
-                () => post(`/api/slips/${slip.id}/approve`, { side: "karigar" }),
-                "Approved — waiting for the jeweller's tap, then UPI pays me"
-              )
-            }
-          />
+        <div className="mt-2 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <TapChip label="Jeweller" checked={slip.jewellerApproved} who="jeweller" />
+            <TapChip
+              label="My approval"
+              checked={slip.karigarApproved}
+              who="karigar"
+              disabled={slip.disputed}
+              onTap={() =>
+                onAct(
+                  () => post(`/api/slips/${slip.id}/approve`, { side: "karigar" }),
+                  "Approved — waiting for the jeweller's tap, then UPI pays me"
+                )
+              }
+            />
+          </div>
+          {slip.disputed && (
+            <p className="font-hand text-xs font-bold text-marker-red">
+              My approval tap is locked while the dispute is open.
+            </p>
+          )}
+          <DisputeBox slip={slip} side="karigar" onRefresh={onRefresh} compact />
         </div>
       )}
 

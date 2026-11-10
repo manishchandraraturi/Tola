@@ -51,6 +51,8 @@ const KIND_TONE: Record<string, { bg: string; line: string }> = {
   SETTLE: { bg: "var(--green-fill)", line: "var(--green-line)" },
   FLAG: { bg: "var(--salmon-fill)", line: "var(--salmon-line)" },
   CLOCK: { bg: "var(--blue-fill)", line: "var(--blue-line)" },
+  DISPUTE: { bg: "var(--salmon-fill)", line: "var(--marker-red)" },
+  RESOLVE: { bg: "var(--green-fill)", line: "var(--green-line)" },
 };
 
 export default function Dashboard({
@@ -220,6 +222,7 @@ function Overview({
     { label: "Open slips", value: String(stats.openSlips), sub: `${stats.settledCount} settled so far`, tone: "blue" as const },
     { label: "Due within 7 days", value: String(stats.dueSoon), sub: "wedding dates come first", tone: "salmon" as const },
     { label: "Days to pay a karigar", value: `${stats.avgPayDays}`, sub: `${fmtRupees(stats.paidTotal)} paid by UPI`, tone: "green" as const },
+    { label: "Open disputes", value: String(stats.disputes), sub: stats.disputes > 0 ? "settlement blocked on these" : "counted straight from the slips", tone: "gray" as const },
   ];
   return (
     <div className="space-y-8">
@@ -231,9 +234,9 @@ function Overview({
       </div>
 
       {/* KPI row */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {kpis.map((k, i) => (
-          <SketchBox key={k.label} tone={k.tone} variant={(["a", "b", "c", "d"] as const)[i]} className="px-4 py-4">
+          <SketchBox key={k.label} tone={k.tone} variant={(["a", "b", "c", "d", "a"] as const)[i]} className="px-4 py-4">
             <p className="font-sketch text-sm font-bold tracking-wide opacity-80">{k.label}</p>
             <p className="mt-1 font-sketch text-3xl font-bold">{k.value}</p>
             <p className="mt-1 font-hand text-sm opacity-80">{k.sub}</p>
@@ -428,14 +431,32 @@ function ScribeConsole({
   karigars: StateResponse["karigars"];
   onPrefill: (draft: ScribeDraft | null) => void;
 }) {
-  const [text, setText] = React.useState("25.4 grams 22K necklace set wastage 3, due 12 Nov, wedding order");
-  const [out, setOut] = React.useState<null | { heard: string; note: string; missing: string[]; parsed: ScribeDraft & { wastage?: number } }>(null);
+  const [text, setText] = React.useState(
+    "Ravi Kumar: 25.4 grams 22K necklace set, wastage 3, due 12 Nov, wedding order"
+  );
+  const [out, setOut] = React.useState<null | {
+    heard: string;
+    note: string;
+    missing: string[];
+    karigarId: string | null;
+    karigarName: string | null;
+    parsed: {
+      weight?: number;
+      purity?: string;
+      wastage?: number;
+      wedding: boolean;
+      due?: string;
+      job?: string;
+    };
+  }>(null);
+  const [pick, setPick] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const { toast } = useToast();
 
   async function run() {
     setBusy(true);
     setOut(null);
+    setPick("");
     try {
       const res = await fetch("/api/agents/scribe", {
         method: "POST",
@@ -445,6 +466,9 @@ function ScribeConsole({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setOut(data);
+      // Scribe matched a name in the note? Pre-select him. Otherwise the
+      // dropdown starts empty and the user picks who this slip is for.
+      setPick(data.karigarId ?? "");
     } catch (e) {
       toast({ title: "Scribe could not listen", description: e instanceof Error ? e.message : "", variant: "destructive" });
     } finally {
@@ -479,23 +503,51 @@ function ScribeConsole({
         <div className="tola-pop mt-3 border-[2px] border-ink bg-white px-3 py-2 sketch-c">
           <p className="font-hand text-sm text-ink">{out.heard}</p>
           <p className="mt-1 font-hand text-sm text-ink-soft">{out.note}</p>
-          <SketchButton
-            tone="yellow"
-            className="mt-2 !py-1 text-sm"
-            onClick={() =>
-              onPrefill({
-                karigarId: karigars[0]?.id,
-                weightGrams: out.parsed.weight,
-                purity: out.parsed.purity,
-                job: out.parsed.job,
-                isWedding: out.parsed.wedding,
-                dueDate: out.parsed.due,
-                wastageAgreedPct: out.parsed.wastage,
-              })
-            }
-          >
-            Send to the issue form →
-          </SketchButton>
+          <label className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="font-sketch text-sm font-bold text-ink">This slip is for</span>
+            <select
+              value={pick}
+              onChange={(e) => setPick(e.target.value)}
+              className="border-[2.5px] border-ink bg-white px-2 py-1 font-hand text-base text-ink sketch-c outline-none"
+            >
+              {!pick && <option value="">— pick who this is for —</option>}
+              {karigars.map((k) => (
+                <option key={k.id} value={k.id}>
+                  {k.name}
+                </option>
+              ))}
+            </select>
+            {out.karigarId && pick === out.karigarId ? (
+              <span className="font-hand text-xs text-ink-soft">name matched from what was said</span>
+            ) : (
+              <span className="font-hand text-xs text-marker-red">no name in the note — picked by hand</span>
+            )}
+          </label>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <SketchButton
+              tone="yellow"
+              className="!py-1 text-sm"
+              disabled={!pick}
+              onClick={() =>
+                onPrefill({
+                  karigarId: pick,
+                  weightGrams: out.parsed.weight,
+                  purity: out.parsed.purity,
+                  job: out.parsed.job,
+                  isWedding: out.parsed.wedding,
+                  dueDate: out.parsed.due,
+                  wastageAgreedPct: out.parsed.wastage,
+                })
+              }
+            >
+              Send to the issue form →
+            </SketchButton>
+            {!pick && (
+              <span className="font-hand text-xs text-ink-soft">
+                Scribe will not guess the karigar — pick one above first.
+              </span>
+            )}
+          </div>
         </div>
       )}
     </SketchBox>
@@ -516,7 +568,7 @@ function WatcherConsole({
     <SketchBox tone="yellow" variant="b" className="flex flex-col px-4 py-4">
       <p className="font-sketch text-lg font-bold text-ink">Watcher · due dates, wedding dates first</p>
       <p className="mt-1 font-hand text-sm text-ink-soft">
-        Watches every slip, warns early, nudges on WhatsApp. SMS as fallback.
+        Watches every slip, warns early. Reminders queue for WhatsApp and SMS.
       </p>
       <div className="mt-2">
         <SketchButton

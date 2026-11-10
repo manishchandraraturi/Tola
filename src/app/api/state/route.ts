@@ -54,6 +54,9 @@ export async function GET() {
     : 0;
   const paidTotal = settled.reduce((a, s) => a + (s.makingCharges ?? 0), 0);
 
+  // Open disputes, counted from the database — settlement on these is blocked.
+  const disputes = await db.slip.count({ where: { disputed: true } });
+
   return NextResponse.json({
     jeweller: { name: "Sri Lakshmi Jewellers", city: "Bengaluru", rate: MAKING_CHARGE_PER_GRAM },
     karigars: karigars.map((k) => ({
@@ -73,7 +76,7 @@ export async function GET() {
       dueSoon,
       avgPayDays,
       paidTotal: Math.round(paidTotal),
-      disputes: 0,
+      disputes,
       settledCount: settled.length,
     },
     alerts: watcherAlerts(
