@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
 
   await appendLedger(
     "CLOCK",
-    `Settler started the payment clock on slip #${slip.number}. Statement sent to both phones. UPI link for Rs ${amount.toLocaleString("en-IN")} is ready, waiting for both approvals.`,
+    `Settler started the payment clock on slip #${slip.number}. Statement ready for both phones (delivery is a later task). UPI link for Rs ${amount.toLocaleString("en-IN")} is ready, waiting for both approvals.`,
     slip.id
   );
 

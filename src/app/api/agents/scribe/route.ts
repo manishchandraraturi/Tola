@@ -1,32 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { scribeParse } from "@/lib/tola";
+import { scribeParse, matchKarigar } from "@/lib/tola";
 
 export const dynamic = "force-dynamic";
 
-function escapeRegExp(s: string) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// Match a karigar name mentioned in the text: full name if present,
-// otherwise a first-name match. Case-insensitive, on word boundaries
-// so "ravi" does not match inside another word.
-function matchKarigar(text: string, karigars: Array<{ id: string; name: string }>) {
-  const lower = text.toLowerCase();
-  for (const k of karigars) {
-    const full = k.name.toLowerCase();
-    if (full && lower.includes(full)) return k;
-  }
-  for (const k of karigars) {
-    const first = k.name.toLowerCase().split(/\s+/)[0];
-    if (!first) continue;
-    if (new RegExp(`\\b${escapeRegExp(first)}\\b`, "i").test(text)) return k;
-  }
-  return null;
-}
-
 // Scribe: speak, or snap the scale, in Kannada or Hindi.
 // Here we parse a simulated transcription (typed note) into a slip draft.
+// Karigar matching lives in lib/tola.ts (pure, unit-tested): full name if
+// present, otherwise a first-name match, case-insensitive on word boundaries.
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const text = String(body.text ?? "").trim();

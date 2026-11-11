@@ -166,6 +166,31 @@ function num(t: string, re: RegExp): number | undefined {
   return isFinite(v) ? v : undefined;
 }
 
+// Scribe helper: match a karigar name mentioned in the note. Full name wins,
+// then a first-name match. Case-insensitive, on word boundaries, so "ravi"
+// does not match inside another word. Returns null when nobody is named —
+// the UI then falls back to a hand pick from a dropdown.
+export function matchKarigar(
+  text: string,
+  karigars: Array<{ id: string; name: string }>
+): { id: string; name: string } | null {
+  const lower = text.toLowerCase();
+  for (const k of karigars) {
+    const full = k.name.toLowerCase();
+    if (full && lower.includes(full)) return k;
+  }
+  for (const k of karigars) {
+    const first = k.name.toLowerCase().split(/\s+/)[0];
+    if (!first) continue;
+    if (new RegExp(`\\b${escapeRegExp(first)}\\b`, "i").test(text)) return k;
+  }
+  return null;
+}
+
+function escapeRegExp(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function parseDue(t: string): string | undefined {
   const months = [
     "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",

@@ -1,0 +1,704 @@
+     1→"use client";
+     2→
+     3→import * as React from "react";
+     4→import {
+     5→  SketchBox,
+     6→  SketchButton,
+     7→  Takeaway,
+     8→  Stamp,
+     9→  TapChip,
+    10→  SlipCard,
+    11→  DueChip,
+    12→  FlowArrow,
+    13→  Kicker,
+    14→} from "./sketch";
+    15→import { StickKarigar } from "./sketch";
+    16→import { fmtDate, fmtDateTime, fmtRupees, type SlipRow, type KarigarRow, type SlipStatus } from "./types";
+    17→import { useToast } from "@/hooks/use-toast";
+    18→
+    19→async function post(url: string, body?: unknown) {
+    20→  const res = await fetch(url, {
+    21→    method: "POST",
+    22→    headers: { "Content-Type": "application/json" },
+    23→    body: body ? JSON.stringify(body) : undefined,
+    24→  });
+    25→  const data = await res.json().catch(() => ({}));
+    26→  if (!res.ok) throw new Error(data.error ?? "Something went wrong");
+    27→  return data;
+    28→}
+    29→
+    30→/* ================= Slips list ================= */
+    31→
+    32→export function SlipsPanel({
+    33→  slips,
+    34→  selectedId,
+    35→  onSelect,
+    36→  onRefresh,
+    37→}: {
+    38→  slips: SlipRow[];
+    39→  selectedId: string | null;
+    40→  onSelect: (id: string | null) => void;
+    41→  onRefresh: () => void;
+    42→}) {
+    43→  const [filter, setFilter] = React.useState<"ALL" | SlipStatus>("ALL");
+    44→  const filtered = slips.filter((s) => filter === "ALL" || s.status === filter);
+    45→  const selected = slips.find((s) => s.id === selectedId) ?? null;
+    46→
+    47→  return (
+    48→    <div className="grid gap-5 lg:grid-cols-[1.05fr_1fr]">
+    49→      <div>
+    50→        <div className="flex flex-wrap items-center gap-2">
+    51→          {(["ALL", "ISSUED", "WORKING", "RETURNED", "SETTLED"] as const).map((f) => (
+    52→            <button
+    53→              key={f}
+    54→              onClick={() => setFilter(f)}
+    55→              className={`stamp transition-transform hover:-translate-y-0.5 ${
+    56→                filter === f ? "" : "opacity-55"
+    57→              }`}
+    58→              style={{
+    59→                background: filter === f ? "var(--marker-yellow)" : "#fff",
+    60→                border: "2px solid var(--ink)",
+    61→                color: "var(--ink)",
+    62→              }}
+    63→            >
+    64→              {f === "ALL" ? "ALL" : f === "WORKING" ? "WITH KARIGAR" : f}
+    65→            </button>
+    66→          ))}
+    67→        </div>
+    68→
+    69→        <div className="tola-scroll mt-4 max-h-[70vh] space-y-3 overflow-y-auto pr-1">
+    70→          {filtered.length === 0 && (
+    71→            <SketchBox tone="gray" className="px-4 py-6 text-center font-hand text-ink-soft">
+    72→              No slips here yet.
+    73→            </SketchBox>
+    74→          )}
+    75→          {filtered.map((s, i) => (
+    76→            <button key={s.id} onClick={() => onSelect(s.id)} className="block w-full text-left">
+    77→              <SketchBox
+    78→                tone={s.id === selectedId ? "yellow" : "white"}
+    79→                variant={(["a", "b", "c", "d"] as const)[i % 4]}
+    80→                className={`px-4 py-3 transition-transform ${s.id === selectedId ? "ring-2 ring-[var(--gold-deep)]" : "hover:-translate-y-0.5"}`}
+    81→              >
+    82→                <div className="flex flex-wrap items-center gap-2">
+    83→                  <span className="font-sketch text-lg font-bold text-ink">#{s.number}</span>
+    84→                  <span className="font-hand text-base text-ink">
+    85→                    {s.job} · {s.weightGrams.toFixed(2)} g {s.purity}
+    86→                  </span>
+    87→                  {s.isWedding && (
+    88→                    <span className="stamp" style={{ background: "var(--salmon-fill)", border: "2px solid var(--salmon-line)", color: "var(--ink)" }}>
+    89→                      WEDDING
+    90→                    </span>
+    91→                  )}
+    92→                  {s.disputed && (
+    93→                    <span className="stamp" style={{ background: "var(--salmon-fill)", border: "2px solid var(--marker-red)", color: "var(--ink)" }}>
+    94→                      DISPUTE
+    95→                    </span>
+    96→                  )}
+    97→                  <span className="ml-auto flex items-center gap-2">
+    98→                    <Stamp status={s.status} />
+    99→                  </span>
+   100→                </div>
+   101→                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 font-hand text-sm text-ink-soft">
+   102→                  <span>with {s.karigarName}</span>
+   103→                  <span className="flex items-center gap-1.5">
+   104→                    due
+   105→                    <DueChip
+   106→                      day={fmtDate(s.dueDate, false)}
+   107→                      month={new Date(s.dueDate).toLocaleDateString("en-IN", { month: "short" }).toUpperCase()}
+   108→                      className="scale-90"
+   109→                    />
+   110→                  </span>
+   111→                  <span>agreed wastage {s.wastageAgreedPct}%</span>
+   112→                </div>
+   113→              </SketchBox>
+   114→            </button>
+   115→          ))}
+   116→        </div>
+   117→      </div>
+   118→
+   119→      <div>
+   120→        {selected ? (
+   121→          <SlipDetail slip={selected} onRefresh={onRefresh} />
+   122→        ) : (
+   123→          <SketchBox tone="paper" variant="c" className="flex h-full min-h-40 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
+   124→            <StickKarigar className="h-24 w-16 opacity-70" mood="happy" />
+   125→            <p className="font-hand text-lg text-ink-soft">
+   126→              Pick a slip to weigh, return, approve or settle it.
+   127→            </p>
+   128→          </SketchBox>
+   129→        )}
+   130→      </div>
+   131→    </div>
+   132→  );
+   133→}
+   134→
+   135→/* ================= Dispute (both sides) ================= */
+   136→
+   137→// "Flag a dispute" lives on RETURNED slips for both sides. An open dispute
+   138→// writes a DISPUTE ledger entry and blocks settlement until it is resolved.
+   139→export function DisputeBox({
+   140→  slip,
+   141→  side,
+   142→  onRefresh,
+   143→  compact = false,
+   144→}: {
+   145→  slip: SlipRow;
+   146→  side: "jeweller" | "karigar";
+   147→  onRefresh: () => void;
+   148→  compact?: boolean;
+   149→}) {
+   150→  const { toast } = useToast();
+   151→  const [note, setNote] = React.useState("");
+   152→  const [busy, setBusy] = React.useState(false);
+   153→
+   154→  async function act(resolve: boolean) {
+   155→    setBusy(true);
+   156→    try {
+   157→      await post(`/api/slips/${slip.id}/dispute`, { side, note, resolve });
+   158→      toast({
+   159→        title: resolve
+   160→          ? "Dispute marked resolved — settlement can go ahead"
+   161→          : slip.disputed
+   162→            ? "Your side joined the dispute record"
+   163→            : "Dispute flagged — settlement is blocked",
+   164→        description: "The ledger got a new entry. Both sides see it.",
+   165→      });
+   166→      setNote("");
+   167→      onRefresh();
+   168→    } catch (e) {
+   169→      toast({ title: "Could not do that", description: e instanceof Error ? e.message : "Try again", variant: "destructive" });
+   170→    } finally {
+   171→      setBusy(false);
+   172→    }
+   173→  }
+   174→
+   175→  const inputCls = compact
+   176→    ? "mt-1 w-full border-[2px] border-ink-soft bg-white px-2 py-1 font-hand text-sm text-ink sketch-c outline-none focus:ring-2 focus:ring-[var(--gold)]"
+   177→    : "mt-1 w-full border-[2.5px] border-ink-soft bg-white px-3 py-2 font-hand text-base text-ink sketch-c outline-none focus:ring-2 focus:ring-[var(--gold)]";
+   178→
+   179→  if (!slip.disputed) {
+   180→    return (
+   181→      <div className={`border-[2.5px] border-dashed border-ink-soft/60 bg-white ${compact ? "px-2.5 py-2" : "px-4 py-3"} sketch-c`}>
+   182→        <p className={`font-hand text-ink-soft ${compact ? "text-sm" : "text-base"}`}>
+   183→          Weights or charges not matching? <b className="text-ink">Flag a dispute</b> — the record
+   184→          keeps both sides honest until it is talked out.
+   185→        </p>
+   186→        <input
+   187→          value={note}
+   188→          onChange={(e) => setNote(e.target.value)}
+   189→          placeholder="Optional note — what does not match?"
+   190→          className={inputCls}
+   191→        />
+   192→        <SketchButton tone="salmon" className="mt-2 !py-1 text-sm" disabled={busy} onClick={() => act(false)}>
+   193→          Flag a dispute
+   194→        </SketchButton>
+   195→      </div>
+   196→    );
+   197→  }
+   198→
+   199→  return (
+   200→    <SketchBox tone="salmon" variant={compact ? "c" : "b"} className={compact ? "px-2.5 py-2" : "px-4 py-3"}>
+   201→      <p className={`font-sketch font-bold ${compact ? "text-sm" : "text-base"} text-ink`}>
+   202→        Open dispute — settlement is blocked
+   203→      </p>
+   204→      {slip.disputeNote && (
+   205→        <div className={`mt-1 whitespace-pre-line border-l-4 border-[var(--marker-red)] bg-white/70 px-2 py-1 font-hand text-ink ${compact ? "text-sm" : "text-base"}`}>
+   206→          {slip.disputeNote}
+   207→        </div>
+   208→      )}
+   209→      <input
+   210→        value={note}
+   211→        onChange={(e) => setNote(e.target.value)}
+   212→        placeholder="Add your side (optional)…"
+   213→        className={inputCls}
+   214→      />
+   215→      <div className="mt-2 flex flex-wrap items-center gap-2">
+   216→        <SketchButton tone="salmon" className="!py-1 text-sm" disabled={busy || !note.trim()} onClick={() => act(false)}>
+   217→          Add my side
+   218→        </SketchButton>
+   219→        <SketchButton tone="green" className="!py-1 text-sm" disabled={busy} onClick={() => act(true)}>
+   220→          Mark the dispute resolved
+   221→        </SketchButton>
+   222→      </div>
+   223→      <p className={`mt-1.5 font-hand text-ink-soft ${compact ? "text-xs" : "text-sm"}`}>
+   224→        Either side can resolve it. Approvals and the Settler stay locked until then.
+   225→      </p>
+   226→    </SketchBox>
+   227→  );
+   228→}
+   229→
+   230→/* ================= Slip detail with the whole flow ================= */
+   231→
+   232→export function SlipDetail({ slip, onRefresh }: { slip: SlipRow; onRefresh: () => void }) {
+   233→  const { toast } = useToast();
+   234→  const [busy, setBusy] = React.useState(false);
+   235→  const [piece, setPiece] = React.useState("");
+   236→  const [scrap, setScrap] = React.useState("");
+   237→  const [statement, setStatement] = React.useState<null | {
+   238→    lines: string[];
+   239→    upiLink: string;
+   240→    clockStartedAt: string;
+   241→    waitingFor: string[];
+   242→  }>(null);
+   243→
+   244→  const wastagePreview =
+   245→    slip.status === "ISSUED" || slip.status === "WORKING"
+   246→      ? (() => {
+   247→          const p = parseFloat(piece);
+   248→          const sc = parseFloat(scrap);
+   249→          if (!isFinite(p) || p <= 0 || !isFinite(sc) || sc < 0) return null;
+   250→          if (p + sc > slip.weightGrams) return null;
+   251→          return Math.round(((slip.weightGrams - p - sc) / slip.weightGrams) * 10000) / 100;
+   252→        })()
+   253→      : null;
+   254→
+   255→  async function run(fn: () => Promise<void>, done: string) {
+   256→    setBusy(true);
+   257→    try {
+   258→      await fn();
+   259→      toast({ title: done, description: "The ledger got a new entry. Both sides see it." });
+   260→      onRefresh();
+   261→    } catch (e) {
+   262→      toast({ title: "Could not do that", description: e instanceof Error ? e.message : "Try again", variant: "destructive" });
+   263→    } finally {
+   264→      setBusy(false);
+   265→    }
+   266→  }
+   267→
+   268→  return (
+   269→    <div className="space-y-4">
+   270→      <SlipCard
+   271→        number={slip.number}
+   272→        weightGrams={slip.weightGrams}
+   273→        purity={slip.purity}
+   274→        job={slip.job}
+   275→        dueDate={slip.dueDate}
+   276→        isWedding={slip.isWedding}
+   277→        wastageAgreedPct={slip.wastageAgreedPct}
+   278→        jewellerApproved={slip.jewellerApproved || slip.status === "WORKING" || slip.status === "RETURNED" || slip.status === "SETTLED"}
+   279→        karigarApproved={slip.karigarApproved || slip.status === "WORKING" || slip.status === "RETURNED" || slip.status === "SETTLED"}
+   280→        className="max-w-full"
+   281→      />
+   282→
+   283→      {/* ---- ISSUED ---- */}
+   284→      {slip.status === "ISSUED" && (
+   285→        <SketchBox tone="blue" variant="b" className="px-4 py-4">
+   286→          <p className="font-sketch font-bold">Step 1 · waiting for his tap</p>
+   287→          <p className="mt-1 font-hand text-base leading-relaxed text-ink">
+   288→            The jeweller tapped. {slip.karigarName} got the slip on his phone — nothing changes
+   289→            until he taps too.
+   290→          </p>
+   291→          <div className="mt-3 flex flex-wrap items-center gap-3">
+   292→            <TapChip label="Jeweller" checked who="jeweller" />
+   293→            <TapChip label={slip.karigarName} checked={false} disabled who="karigar" />
+   294→            <SketchButton
+   295→              tone="green"
+   296→              disabled={busy}
+   297→              onClick={() =>
+   298→                run(async () => {
+   299→                  await post(`/api/slips/${slip.id}/confirm`);
+   300→                }, "Both taps done — gold is now in his account")
+   301→              }
+   302→            >
+   303→              Simulate: he taps confirm on his phone
+   304→            </SketchButton>
+   305→          </div>
+   306→        </SketchBox>
+   307→      )}
+   308→
+   309→      {/* ---- WORKING ---- */}
+   310→      {slip.status === "WORKING" && (
+   311→        <SketchBox tone="green" variant="c" className="px-4 py-4">
+   312→          <p className="font-sketch font-bold">Gold is with {slip.karigarName}</p>
+   313→          <p className="mt-1 font-hand text-base leading-relaxed text-ink">
+   314→            Live balance seen by both. When the piece comes back, weigh it, snap the scale, and
+   315→            enter the two weights below.
+   316→          </p>
+   317→          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+   318→            <label className="font-sketch text-sm font-bold text-ink">
+   319→              Finished piece (g)
+   320→              <input
+   321→                value={piece}
+   322→                onChange={(e) => setPiece(e.target.value)}
+   323→                inputMode="decimal"
+   324→                placeholder="e.g. 24.10"
+   325→                className="mt-1 w-full border-[2.5px] border-ink bg-white px-3 py-2 font-hand text-lg text-ink sketch-c outline-none focus:ring-2 focus:ring-[var(--gold)]"
+   326→              />
+   327→            </label>
+   328→            <label className="font-sketch text-sm font-bold text-ink">
+   329→              Scrap recovered (g)
+   330→              <input
+   331→                value={scrap}
+   332→                onChange={(e) => setScrap(e.target.value)}
+   333→                inputMode="decimal"
+   334→                placeholder="e.g. 0.30"
+   335→                className="mt-1 w-full border-[2.5px] border-ink bg-white px-3 py-2 font-hand text-lg text-ink sketch-c outline-none focus:ring-2 focus:ring-[var(--gold)]"
+   336→              />
+   337→            </label>
+   338→          </div>
+   339→          {wastagePreview !== null && (
+   340→            <p className="mt-2 font-hand text-base text-ink">
+   341→              Wastage will work out to <b>{wastagePreview}%</b> (agreed {slip.wastageAgreedPct}%).
+   342→            </p>
+   343→          )}
+   344→          <SketchButton
+   345→            tone="orange"
+   346→            className="mt-3"
+   347→            disabled={busy || wastagePreview === null}
+   348→            onClick={() =>
+   349→              run(async () => {
+   350→                await post(`/api/slips/${slip.id}/return`, {
+   351→                  pieceWeightGrams: parseFloat(piece),
+   352→                  scrapWeightGrams: parseFloat(scrap),
+   353→                });
+   354→                setPiece("");
+   355→                setScrap("");
+   356→              }, "Return recorded — wastage worked out")
+   357→            }
+   358→          >
+   359→            Record the return
+   360→          </SketchButton>
+   361→        </SketchBox>
+   362→      )}
+   363→
+   364→      {/* ---- RETURNED ---- */}
+   365→      {slip.status === "RETURNED" && (
+   366→        <>
+   367→          <SketchBox tone="orange" variant="b" className="px-4 py-4">
+   368→            <p className="font-sketch font-bold">Step 3 · wastage, worked out in the open</p>
+   369→            <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 font-hand text-base text-ink">
+   370→              <span>
+   371→                Piece: <b>{(slip.pieceWeightGrams ?? 0).toFixed(2)} g</b>
+   372→              </span>
+   373→              <span>
+   374→                Scrap: <b>{(slip.scrapWeightGrams ?? 0).toFixed(2)} g</b>
+   375→              </span>
+   376→              <span>
+   377→                Actual wastage:{" "}
+   378→                <b className={((slip.wastageActualPct ?? 0) > slip.wastageAgreedPct + 1) ? "text-marker-red" : "text-[var(--green-ink)]"}>
+   379→                  {slip.wastageActualPct}%
+   380→                </b>{" "}
+   381→                (agreed {slip.wastageAgreedPct}%)
+   382→              </span>
+   383→            </div>
+   384→            {slip.fairFlag && (
+   385→              <p className="mt-3 border-t-2 border-dashed border-ink-soft/40 pt-3 font-hand text-base leading-relaxed text-ink">
+   386→                <b className="font-sketch">Fair-wastage agent:</b> {slip.fairFlag}
+   387→              </p>
+   388→            )}
+   389→          </SketchBox>
+   390→
+   391→          <DisputeBox slip={slip} side="jeweller" onRefresh={onRefresh} />
+   392→
+   393→          <SketchBox tone="salmon" variant="c" className="px-4 py-4">
+   394→            <p className="font-sketch font-bold">Step 4 · settle — both must tap</p>
+   395→            {slip.disputed && (
+   396→              <p className="mt-2 font-hand text-base font-bold text-marker-red">
+   397→                Locked: an open dispute blocks approvals and the Settler. Resolve it below first.
+   398→              </p>
+   399→            )}
+   400→            <div className="mt-3 flex flex-wrap items-center gap-3">
+   401→              <TapChip
+   402→                label="Jeweller"
+   403→                checked={slip.jewellerApproved}
+   404→                who="jeweller"
+   405→                disabled={slip.disputed}
+   406→                onTap={() =>
+   407→                  run(async () => {
+   408→                    const r = await post(`/api/slips/${slip.id}/approve`, { side: "jeweller" });
+   409→                    if (r.settled) toast({ title: "Settled! UPI paid out." });
+   410→                  }, "Jeweller approved")
+   411→                }
+   412→              />
+   413→              <TapChip
+   414→                label={slip.karigarName}
+   415→                checked={slip.karigarApproved}
+   416→                who="karigar"
+   417→                disabled={slip.disputed}
+   418→                onTap={() =>
+   419→                  run(async () => {
+   420→                    const r = await post(`/api/slips/${slip.id}/approve`, { side: "karigar" });
+   421→                    if (r.settled) toast({ title: "Settled! UPI paid out." });
+   422→                  }, `${slip.karigarName} approved`)
+   423→                }
+   424→              />
+   425→              <span className="font-hand text-sm text-ink-soft">
+   426→                (tap either side here to see both approvals — on two real phones they are two people)
+   427→              </span>
+   428→            </div>
+   429→
+   430→            <div className="mt-4">
+   431→              {statement ? (
+   432→                <div className="border-[2.5px] border-ink bg-white px-4 py-3 sketch">
+   433→                  <p className="font-sketch font-bold text-ink">Statement for both phones</p>
+   434→                  <ul className="mt-1 space-y-0.5 font-hand text-sm text-ink sm:text-base">
+   435→                    {statement.lines.map((l) => (
+   436→                      <li key={l}>• {l}</li>
+   437→                    ))}
+   438→                  </ul>
+   439→                  <p className="mt-2 flex items-center gap-2 font-hand text-sm text-[var(--blue-ink)]">
+   440→                    <span className="font-sketch font-bold">UPI link ready:</span>
+   441→                    <code className="rounded bg-[var(--blue-fill)] px-1.5 py-0.5 text-xs">{statement.upiLink}</code>
+   442→                  </p>
+   443→                  <p className="mt-1 font-hand text-sm text-ink-soft">
+   444→                    Payment clock started {fmtDateTime(statement.clockStartedAt)} · waiting for:{" "}
+   445→                    {statement.waitingFor.length ? statement.waitingFor.join(" + ") : "nobody — both tapped"}
+   446→                  </p>
+   447→                </div>
+   448→              ) : (
+   449→                <SketchButton
+   450→                  tone="blue"
+   451→                  disabled={busy || slip.disputed}
+   452→                  onClick={() =>
+   453→                    run(async () => {
+   454→                      const r = await post("/api/agents/settler", { slipId: slip.id });
+   455→                      setStatement(r.statement);
+   456→                    }, "Settler built the statements and started the clock")
+   457→                  }
+   458→                >
+   459→                  Run Settler: statements + payment clock + UPI link
+   460→                </SketchButton>
+   461→              )}
+   462→            </div>
+   463→          </SketchBox>
+   464→        </>
+   465→      )}
+   466→
+   467→      {/* ---- SETTLED ---- */}
+   468→      {slip.status === "SETTLED" && (
+   469→        <SketchBox tone="green" variant="b" className="px-4 py-4">
+   470→          <p className="font-sketch text-lg font-bold text-[var(--green-ink)]">
+   471→            Settled — paid on the clock, not on mood
+   472→          </p>
+   473→          <div className="mt-2 space-y-1 font-hand text-base text-ink">
+   474→            <p>
+   475→              Making charges paid: <b>{fmtRupees(slip.payment?.amount ?? slip.makingCharges ?? 0)}</b> by{" "}
+   476→              {slip.payment?.method ?? "UPI"}
+   477→            </p>
+   478→            <p>Paid at: {slip.paidAt ? fmtDateTime(slip.paidAt) : "—"}</p>
+   479→            <p>
+   480→              Wastage: {slip.wastageActualPct}% against agreed {slip.wastageAgreedPct}%
+   481→            </p>
+   482→          </div>
+   483→        </SketchBox>
+   484→      )}
+   485→
+   486→      <p className="font-hand text-sm text-ink-soft">
+   487→        Every step above wrote one entry to the shared ledger. Hash-linked, so tampering shows.
+   488→      </p>
+   489→    </div>
+   490→  );
+   491→}
+   492→
+   493→/* ================= Issue gold form ================= */
+   494→
+   495→export type ScribeDraft = {
+   496→  karigarId?: string;
+   497→  weightGrams?: number;
+   498→  purity?: string;
+   499→  job?: string;
+   500→  isWedding?: boolean;
+   501→  dueDate?: string;
+   502→  wastageAgreedPct?: number;
+   503→};
+   504→
+   505→export function IssuePanel({
+   506→  karigars,
+   507→  onCreated,
+   508→  prefill,
+   509→}: {
+   510→  karigars: KarigarRow[];
+   511→  onCreated: (slip: SlipRow) => void;
+   512→  prefill?: ScribeDraft | null;
+   513→}) {
+   514→  const { toast } = useToast();
+   515→  const [karigarId, setKarigarId] = React.useState(karigars[0]?.id ?? "");
+   516→  const [weight, setWeight] = React.useState("");
+   517→  const [purity, setPurity] = React.useState("22K");
+   518→  const [job, setJob] = React.useState("");
+   519→  const [wedding, setWedding] = React.useState(false);
+   520→  const [wastage, setWastage] = React.useState("3");
+   521→  const [due, setDue] = React.useState(() => {
+   522→    const d = new Date();
+   523→    d.setDate(d.getDate() + 7);
+   524→    return d.toISOString().slice(0, 10);
+   525→  });
+   526→  const [busy, setBusy] = React.useState(false);
+   527→
+   528→  React.useEffect(() => {
+   529→    if (!prefill) return;
+   530→    if (prefill.karigarId) setKarigarId(prefill.karigarId);
+   531→    if (prefill.weightGrams) setWeight(String(prefill.weightGrams));
+   532→    if (prefill.purity) setPurity(prefill.purity);
+   533→    if (prefill.job) setJob(prefill.job);
+   534→    if (prefill.isWedding !== undefined) setWedding(prefill.isWedding);
+   535→    if (prefill.wastageAgreedPct !== undefined) setWastage(String(prefill.wastageAgreedPct));
+   536→    if (prefill.dueDate) setDue(prefill.dueDate.slice(0, 10));
+   537→  }, [prefill]);
+   538→
+   539→  const makingCharges = (() => {
+   540→    const w = parseFloat(weight);
+   541→    if (!isFinite(w) || w <= 0) return null;
+   542→    return Math.round((w * 380) / 10) * 10;
+   543→  })();
+   544→
+   545→  async function submit() {
+   546→    setBusy(true);
+   547→    try {
+   548→      const r = await post("/api/slips", {
+   549→        karigarId,
+   550→        weightGrams: parseFloat(weight),
+   551→        purity,
+   552→        job,
+   553→        isWedding: wedding,
+   554→        wastageAgreedPct: parseFloat(wastage),
+   555→        dueDate: new Date(due + "T09:00:00").toISOString(),
+   556→      });
+   557→      toast({
+   558→        title: `Slip #${r.slip.number} issued`,
+   559→        description: "Jeweller tapped. Now the karigar must tap on his phone.",
+   560→      });
+   561→      setWeight("");
+   562→      setJob("");
+   563→      setWedding(false);
+   564→      onCreated(r.slip as SlipRow);
+   565→    } catch (e) {
+   566→      toast({
+   567→        title: "Could not issue the slip",
+   568→        description: e instanceof Error ? e.message : "Check the fields",
+   569→        variant: "destructive",
+   570→      });
+   571→    } finally {
+   572→      setBusy(false);
+   573→    }
+   574→  }
+   575→
+   576→  const canSubmit = karigarId && parseFloat(weight) > 0 && job.trim().length > 2 && due;
+   577→
+   578→  return (
+   579→    <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+   580→      <SketchBox tone="paper" variant="b" className="px-5 py-5">
+   581→        <p className="font-sketch text-xl font-bold text-ink">Weigh, snap the scale, fill the slip</p>
+   582→        <p className="mt-1 font-hand text-base text-ink-soft">
+   583→          The weight can come from a photo of the scale, or from speech. Here, type it like the
+   584→          Scribe agent would read it.
+   585→        </p>
+   586→
+   587→        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+   588→          <label className="font-sketch text-sm font-bold text-ink">
+   589→            Karigar
+   590→            <select
+   591→              value={karigarId}
+   592→              onChange={(e) => setKarigarId(e.target.value)}
+   593→              className="mt-1 w-full border-[2.5px] border-ink bg-white px-3 py-2 font-hand text-lg text-ink sketch-c outline-none"
+   594→            >
+   595→              {karigars.map((k) => (
+   596→                <option key={k.id} value={k.id}>
+   597→                  {k.name} — {k.speciality}
+   598→                </option>
+   599→              ))}
+   600→            </select>
+   601→          </label>
+   602→          <label className="font-sketch text-sm font-bold text-ink">
+   603→            Purity
+   604→            <select
+   605→              value={purity}
+   606→              onChange={(e) => setPurity(e.target.value)}
+   607→              className="mt-1 w-full border-[2.5px] border-ink bg-white px-3 py-2 font-hand text-lg text-ink sketch-c outline-none"
+   608→            >
+   609→              {["22K", "18K", "24K"].map((p) => (
+   610→                <option key={p} value={p}>
+   611→                  {p}
+   612→                </option>
+   613→              ))}
+   614→            </select>
+   615→          </label>
+   616→          <label className="font-sketch text-sm font-bold text-ink">
+   617→            Gold issued (g)
+   618→            <input
+   619→              value={weight}
+   620→              onChange={(e) => setWeight(e.target.value)}
+   621→              inputMode="decimal"
+   622→              placeholder="25.40"
+   623→              className="mt-1 w-full border-[2.5px] border-ink bg-white px-3 py-2 font-hand text-lg text-ink sketch-c outline-none focus:ring-2 focus:ring-[var(--gold)]"
+   624→            />
+   625→          </label>
+   626→          <label className="font-sketch text-sm font-bold text-ink">
+   627→            Agreed wastage (%)
+   628→            <input
+   629→              value={wastage}
+   630→              onChange={(e) => setWastage(e.target.value)}
+   631→              inputMode="decimal"
+   632→              placeholder="3"
+   633→              className="mt-1 w-full border-[2.5px] border-ink bg-white px-3 py-2 font-hand text-lg text-ink sketch-c outline-none focus:ring-2 focus:ring-[var(--gold)]"
+   634→            />
+   635→          </label>
+   636→          <label className="font-sketch text-sm font-bold text-ink sm:col-span-2">
+   637→            Job
+   638→            <input
+   639→              value={job}
+   640→              onChange={(e) => setJob(e.target.value)}
+   641→              placeholder="Necklace set"
+   642→              className="mt-1 w-full border-[2.5px] border-ink bg-white px-3 py-2 font-hand text-lg text-ink sketch-c outline-none focus:ring-2 focus:ring-[var(--gold)]"
+   643→            />
+   644→          </label>
+   645→          <label className="font-sketch text-sm font-bold text-ink">
+   646→            Due date
+   647→            <input
+   648→              type="date"
+   649→              value={due}
+   650→              onChange={(e) => setDue(e.target.value)}
+   651→              className="mt-1 w-full border-[2.5px] border-ink bg-white px-3 py-2 font-hand text-lg text-ink sketch-c outline-none focus:ring-2 focus:ring-[var(--gold)]"
+   652→            />
+   653→          </label>
+   654→          <label className="flex items-end gap-2 pb-1">
+   655→            <input
+   656→              type="checkbox"
+   657→              checked={wedding}
+   658→              onChange={(e) => setWedding(e.target.checked)}
+   659→              className="h-5 w-5 accent-[var(--marker-red)]"
+   660→            />
+   661→            <span className="font-sketch text-sm font-bold text-ink">
+   662→              Wedding order — dates come first
+   663→            </span>
+   664→          </label>
+   665→        </div>
+   666→
+   667→        <div className="mt-5 flex flex-wrap items-center gap-4">
+   668→          <SketchButton tone="yellow" disabled={busy || !canSubmit} onClick={submit}>
+   669→            Tap to issue — slip goes to both phones
+   670→          </SketchButton>
+   671→          {makingCharges !== null && (
+   672→            <span className="font-hand text-base text-ink-soft">
+   673→              Making charges at settle: ~{fmtRupees(makingCharges)} (demo rate ₹380/g)
+   674→            </span>
+   675→          )}
+   676→        </div>
+   677→      </SketchBox>
+   678→
+   679→      <div className="space-y-4">
+   680→        <Takeaway>Nothing changes without both taps.</Takeaway>
+   681→        <SketchBox tone="white" variant="c" className="px-5 py-4">
+   682→          <p className="font-sketch font-bold text-ink">What happens next</p>
+   683→          <div className="mt-3 space-y-2">
+   684→            {[
+   685→              "You tap — the slip reaches his phone.",
+   686→              "He taps — the gold shows in his account, seen by both.",
+   687→              "He works. The balance stays visible to both sides.",
+   688→              "On return: piece and scrap weighed, wastage worked out.",
+   689→              "Both approve. UPI pays out on the clock.",
+   690→            ].map((t, i, arr) => (
+   691→              <div key={i} className="flex items-center gap-2">
+   692→                <span className="num-dot !h-6 !w-6 text-xs">{i + 1}</span>
+   693→                <p className="font-hand text-sm text-ink sm:text-base">{t}</p>
+   694→                {i < arr.length - 1 && <FlowArrow className="ml-auto hidden h-5 w-7 sm:block" />}
+   695→              </div>
+   696→            ))}
+   697→          </div>
+   698→        </SketchBox>
+   699→        <Kicker>Prototype scope: one jeweller · three karigars</Kicker>
+   700→      </div>
+   701→    </div>
+   702→  );
+   703→}
+   704→
