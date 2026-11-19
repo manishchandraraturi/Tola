@@ -95,6 +95,8 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api) return
+    // Embla only reports its first selection after mount, so sync it once.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- embla's initial selection
     onSelect(api)
     api.on("reInit", onSelect)
     api.on("select", onSelect)

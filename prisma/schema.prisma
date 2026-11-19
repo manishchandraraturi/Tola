@@ -9,62 +9,209 @@ datasource db {
 
 // One jeweller in the prototype; karigars work for several jewellers in real life.
 model Karigar {
-  id         String   @id @default(cuid())
-  name       String
-  phone      String
-  speciality String
-  city       String
-  createdAt  DateTime @default(now())
-  slips      Slip[]
+  id             String    @id @default(cuid())
+  name           String
+  phone          String
+  speciality     String
+  city           String
+  upiId          String?
+  pinHash        String?
+  pinSalt        String?
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+  createdAt      DateTime  @default(now())
+  slips          Slip[]
 }
 
 // A gold slip: gold issued to a karigar for job-work.
 // status: ISSUED -> WORKING -> RETURNED -> SETTLED
 model Slip {
-  id                String    @id @default(cuid())
-  number            Int       @unique
-  weightGrams       Float
-  purity            String
-  job               String
-  isWedding         Boolean   @default(false)
-  dueDate           DateTime
-  wastageAgreedPct  Float
-  status            String    @default("ISSUED")
-  pieceWeightGrams  Float?
-  scrapWeightGrams  Float?
-  wastageActualPct  Float?
-  fairFlag          String?
-  disputed          Boolean   @default(false)
-  disputeNote       String?
-  jewellerApproved  Boolean   @default(false)
-  karigarApproved   Boolean   @default(false)
-  makingCharges     Float?
-  paidAt            DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  karigarId         String
-  karigar           Karigar   @relation(fields: [karigarId], references: [id])
-  entries           LedgerEntry[]
-  payment           Payment?
+  id                    String         @id @default(cuid())
+  number                Int            @unique
+  weightGrams           Float
+  purity                String
+  job                   String
+  isWedding             Boolean        @default(false)
+  status                String         @default("ISSUED")
+  // P9: how the slip was created — "typed" | "voice" | "photo".
+  source                String         @default("typed")
+  dueDate               DateTime
+  wastageAgreedPct      Float
+  pieceWeightGrams      Float?
+  scrapWeightGrams      Float?
+  wastageActualPct      Float?
+  fairFlag              String?
+  disputed              Boolean        @default(false)
+  disputeNote           String?
+  disputeOpenedBy       String?
+  wastageProposedPct    Float?
+  wastageProposalStatus String?
+  wastageProposalNote   String?
+  wastageProposedAt     DateTime?
+  jewellerApproved      Boolean        @default(false)
+  karigarApproved       Boolean        @default(false)
+  makingCharges         Float?
+  paidAt                DateTime?
+  payDueAt              DateTime?
+  // P8: customer-facing status link. The token is the only thing the public
+  // page needs; it exposes a whitelisted progress view and nothing financial.
+  customerName          String?
+  customerPhone         String?
+  publicToken           String?        @unique
+  publicTokenRevokedAt  DateTime?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  karigarId             String
+  karigar               Karigar        @relation(fields: [karigarId], references: [id])
+  entries               LedgerEntry[]
+  payment               Payment?
+  photos                SlipPhoto[]
+  scrapLots             ScrapLot[]
+  returnedAt            DateTime?
+  jewellerApprovedAt    DateTime?
+  karigarApprovedAt     DateTime?
+  settledAt             DateTime?
+  disputeEvents         DisputeEvent[]
+}
+
+// P10: a scale photo read into a weight. The image itself is not stored here —
+// only its SHA-256, so the slip can prove which capture the reading came from.
+model SlipPhoto {
+  id          String   @id @default(cuid())
+  slipId      String
+  slip        Slip     @relation(fields: [slipId], references: [id], onDelete: Cascade)
+  sha256      String
+  filename    String
+  weightGrams Float
+  confidence  Float
+  actor       String
+  createdAt   DateTime @default(now())
+
+  @@index([slipId])
+}
+
+// P10: scrap recovered by the refiner, linked to the slip it came from.
+// refinerProof holds the demo OTP/receipt string for the refiner's signature.
+model ScrapLot {
+  id           String   @id @default(cuid())
+  slipId       String
+  slip         Slip     @relation(fields: [slipId], references: [id], onDelete: Cascade)
+  recoveredG   Float
+  refinedAt    DateTime @default(now())
+  refinerProof String?
+
+  @@index([slipId])
+}
+
+// Trade-wide wastage ranges by job keyword. These are a demo assumption and
+// are editable in the database — the UI labels them as such.
+model WastageBenchmark {
+  id        String   @id @default(cuid())
+  keyword   String   @unique
+  minPct    Float
+  maxPct    Float
+  avgPct    Float
+  source    String   @default("Trade benchmark (demo assumption)")
+  createdAt DateTime @default(now())
+}
+
+// A structured history of a dispute: opened, note added, resolved or withdrawn.
+// Metrics (disputes opened per month, average days to resolve) are computed
+// from these events.
+model DisputeEvent {
+  id        String   @id @default(cuid())
+  slipId    String
+  slip      Slip     @relation(fields: [slipId], references: [id], onDelete: Cascade)
+  kind      String // OPENED | NOTE | RESOLVED | WITHDRAWN
+  side      String // jeweller | karigar
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([slipId])
+}
+
+// A jeweller who owns the business.
+model JewellerAccount {
+  id             String    @id @default("default")
+  name           String    @default("Sri Lakshmi Jewellers")
+  city           String    @default("Bengaluru")
+  pinHash        String
+  pinSalt        String
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+  updatedAt      DateTime  @updatedAt
 }
 
 // Append-only, hash-linked record. Tampering shows.
 model LedgerEntry {
   id        String   @id @default(cuid())
+  seq       Int      @unique
   kind      String
   text      String
   hash      String
+  prevHash  String?
+  actor     String
+  proof     String?
   createdAt DateTime @default(now())
   slipId    String?
   slip      Slip?    @relation(fields: [slipId], references: [id], onDelete: Cascade)
 }
 
+// Payment
 model Payment {
+  id              String    @id @default(cuid())
+  slipId          String    @unique
+  slip            Slip      @relation(fields: [slipId], references: [id], onDelete: Cascade)
+  amount          Float
+  method          String    @default("UPI")
+  status          String    @default("PAID")
+  upiRef          String?
+  paidConfirmedAt DateTime?
+  createdAt       DateTime  @default(now())
+}
+
+// OTP challenge for dual-signed tap confirmation
+model OtpChallenge {
+  id         String    @id @default(cuid())
+  actor      String
+  purpose    String
+  targetId   String?
+  codeHash   String
+  codeSalt   String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+// One row per slip/level/day the Watcher has already messaged about.
+// The unique key is what stops the same reminder going out twice in a day.
+model AlertLog {
+  id     String   @id @default(cuid())
+  slipId String
+  level  String
+  day    String // "YYYY-MM-DD"
+  sentAt DateTime @default(now())
+
+  @@unique([slipId, level, day])
+}
+
+// P11: replay-safe mutations. A POST with an Idempotency-Key is executed once;
+// a retry after reconnect gets the stored response instead of a second slip.
+model IdempotencyKey {
   id        String   @id @default(cuid())
-  slipId    String   @unique
-  slip      Slip     @relation(fields: [slipId], references: [id], onDelete: Cascade)
-  amount    Float
-  method    String   @default("UPI")
-  status    String   @default("PAID")
+  key       String   @unique
+  response  String // JSON stringified { status, body }
+  createdAt DateTime @default(now())
+}
+
+// Log of notable events (DEMO_SMS channel by default)
+model NotificationLog {
+  id        String   @id @default(cuid())
+  channel   String   @default("DEMO_SMS")
+  recipient String
+  actor     String
+  text      String
+  isDemo    Boolean  @default(true)
   createdAt DateTime @default(now())
 }

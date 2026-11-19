@@ -6,6 +6,7 @@ export type KarigarRow = {
   phone: string;
   speciality: string;
   city: string;
+  upiId: string | null;
   goldBalance: number;
   openSlips: number;
 };
@@ -15,6 +16,19 @@ export type PaymentRow = {
   amount: number;
   method: string;
   status: string;
+  upiRef: string | null;
+  paidConfirmedAt: string | null;
+  upiLink?: string;
+  createdAt: string;
+};
+
+export type SlipPhotoRow = {
+  id: string;
+  sha256: string;
+  filename: string;
+  weightGrams: number;
+  confidence: number;
+  actor: string;
   createdAt: string;
 };
 
@@ -28,21 +42,34 @@ export type SlipRow = {
   dueDate: string;
   wastageAgreedPct: number;
   status: SlipStatus;
+  source: string;
   pieceWeightGrams: number | null;
   scrapWeightGrams: number | null;
   wastageActualPct: number | null;
   fairFlag: string | null;
   disputed: boolean;
   disputeNote: string | null;
+  disputeOpenedBy: string | null;
+  wastageProposedPct: number | null;
+  wastageProposalStatus: string | null;
+  wastageProposalNote: string | null;
   jewellerApproved: boolean;
   karigarApproved: boolean;
   makingCharges: number | null;
   paidAt: string | null;
+  payDueAt: string | null;
+  jewellerApprovedAt: string | null;
+  karigarApprovedAt: string | null;
+  settledAt: string | null;
   createdAt: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  publicToken: string | null;
   karigarId: string;
   karigarName: string;
   karigarPhone: string;
   payment: PaymentRow | null;
+  photos: SlipPhotoRow[];
 };
 
 export type LedgerRow = {
@@ -64,8 +91,20 @@ export type WatcherAlert = {
   message: string;
 };
 
+export type NotificationRow = {
+  id: string;
+  channel: string;
+  recipient: string;
+  actor: string;
+  text: string;
+  isDemo: boolean;
+  createdAt: string;
+};
+
 export type StateResponse = {
   jeweller: { name: string; city: string; rate: number };
+  plan: { cap: number; proposedRupees: number; label: string };
+  benchmarks: Array<{ keyword: string; minPct: number; maxPct: number; avgPct: number; source: string }>;
   karigars: KarigarRow[];
   slips: SlipRow[];
   ledger: LedgerRow[];
@@ -75,10 +114,21 @@ export type StateResponse = {
     dueSoon: number;
     avgPayDays: number;
     paidTotal: number;
+    pendingPayments: number;
+    overduePayments: number;
     disputes: number;
+    disputesThisMonth: number;
+    avgDisputeDays: number;
+    disputeHistory: Array<{ month: string; opened: number; closed: number }>;
+    disputeTrend: Array<{ month: string; opened: number; closed: number }>;
+    onTimeDeliveryPct: number;
+    onTimeCount: number;
+    returnedCount: number;
+    paidSample: number;
     settledCount: number;
   };
   alerts: WatcherAlert[];
+  notifications: NotificationRow[];
 };
 
 export const STATUS_LABEL: Record<SlipStatus, string> = {

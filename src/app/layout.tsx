@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { ServiceWorkerRegister } from "@/components/tola/sw-register";
 
 const patrickHand = localFont({
   src: "../../public/fonts/patrick-hand-400.ttf",
@@ -30,6 +31,15 @@ export const metadata: Metadata = {
     "Tola keeps one shared gold record for jeweller and karigar: issue slips on both phones, live gold balance, fair wastage, on-time UPI settlement. Tech4Bharat 2026 | Problem 2.2.",
   keywords: ["Tola", "gold", "karigar", "jeweller", "job work", "agentic AI", "Tech4Bharat"],
   authors: [{ name: "Team Tola — Tech4Bharat 2026" }],
+  manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/icon-192.png",
+  },
+  appleWebApp: { capable: true, title: "Tola", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
@@ -48,6 +58,7 @@ export default function RootLayout({
       >
         {children}
         <Toaster />
+        <ServiceWorkerRegister />
       </body>
     </html>
   );

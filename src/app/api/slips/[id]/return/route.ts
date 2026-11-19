@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { appendLedger, computeWastage, fairVerdict } from "@/lib/tola";
+import { getActor } from "@/lib/auth";
+import { appendLedger, computeWastage, fairVerdict, ensureBenchmarks } from "@/lib/tola";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,19 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const actor = await getActor(req);
+  if (!actor) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // Recording a return is the jeweller's act; a karigar can never mark their
+  // own piece returned.
+  if (actor.role !== "jeweller") {
+    return NextResponse.json(
+      { error: "Only the jeweller records a return" },
+      { status: 403 }
+    );
+  }
+
   const { id } = await params;
   const body = await req.json();
   const piece = Number(body.pieceWeightGrams);
@@ -31,15 +45,15 @@ export async function POST(
     select: { wastageActualPct: true },
   });
   const vals = history.map((h) => h.wastageActualPct as number);
-  const band = vals.length
-    ? {
-        min: Math.min(...vals),
-        max: Math.max(...vals),
-        avg: Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100) / 100,
-        n: vals.length,
-      }
-    : null;
-  const verdict = fairVerdict(slip.wastageAgreedPct, actual, band);
+  await ensureBenchmarks(db);
+  const benchmarks = await db.wastageBenchmark.findMany();
+  const verdict = fairVerdict({
+    job: slip.job,
+    agreed: slip.wastageAgreedPct,
+    actual,
+    history: vals,
+    benchmarks,
+  });
 
   const updated = await db.slip.update({
     where: { id },
@@ -48,7 +62,7 @@ export async function POST(
       pieceWeightGrams: piece,
       scrapWeightGrams: scrap,
       wastageActualPct: actual,
-      fairFlag: verdict,
+      fairFlag: verdict.text,
     },
   });
 
@@ -57,7 +71,7 @@ export async function POST(
     `Slip #${slip.number} returned — piece ${piece.toFixed(2)} g + scrap ${scrap.toFixed(2)} g. Wastage worked out at ${actual}%, agreed was ${slip.wastageAgreedPct}%.`,
     slip.id
   );
-  await appendLedger("FLAG", `Fair-wastage on slip #${slip.number}: ${verdict}`, slip.id);
+  await appendLedger("FLAG", `Fair-wastage on slip #${slip.number}: ${verdict.text}`, slip.id);
 
   return NextResponse.json({ slip: updated, verdict });
 }

@@ -23,13 +23,14 @@ import {
 } from "./sketch";
 
 type Props = {
-  onOpenDashboard: () => void;
-  onOpenKarigar: () => void;
+  onOpenDashboard?: () => void;
+  onOpenKarigar?: () => void;
+  onBack?: () => void;
 };
 
 /* ------------------------------ Nav ------------------------------ */
 
-function Nav({ onOpenDashboard }: { onOpenDashboard: () => void }) {
+function Nav({ onOpenDashboard, onBack }: { onOpenDashboard?: () => void; onBack?: () => void }) {
   const links = [
     ["Problem", "#problem"],
     ["Who", "#who"],
@@ -57,6 +58,11 @@ function Nav({ onOpenDashboard }: { onOpenDashboard: () => void }) {
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-2">
+          {onBack && (
+            <SketchButton tone="paper" onClick={onBack} className="!py-1.5 text-sm sm:text-base">
+              Back to login
+            </SketchButton>
+          )}
           <SketchButton tone="yellow" onClick={onOpenDashboard} className="!py-1.5 text-sm sm:text-base">
             Open the dashboard
           </SketchButton>
@@ -347,7 +353,7 @@ function TodayVsTola() {
 
 /* ------------------------------ Solution ------------------------------ */
 
-function Solution({ onOpenDashboard }: { onOpenDashboard: () => void }) {
+function Solution({ onOpenDashboard }: { onOpenDashboard?: () => void }) {
   const steps = [
     { name: "ISSUE", tone: "blue" as const, body: "Weigh, snap the scale, both confirm" },
     { name: "WORK", tone: "green" as const, body: "Gold balance with the karigar visible to both" },
@@ -708,7 +714,7 @@ function Impact() {
 
 /* ------------------------------ Pricing ------------------------------ */
 
-function Pricing({ onOpenDashboard }: { onOpenDashboard: () => void }) {
+function Pricing({ onOpenDashboard }: { onOpenDashboard?: () => void }) {
   const roadmap = [
     { when: "NOW", body: "Issue, return, settle with voice and photo", tone: "green" as const },
     { when: "NEXT", body: "Refiner link and customer status link", tone: "yellow" as const },
@@ -832,10 +838,10 @@ function Footer({ onOpenDashboard, onOpenKarigar }: Props) {
 
 /* ------------------------------ Page ------------------------------ */
 
-export default function Landing({ onOpenDashboard, onOpenKarigar }: Props) {
+export default function Landing({ onOpenDashboard, onOpenKarigar, onBack }: Props) {
   return (
     <div className="paper-bg flex min-h-screen flex-col font-hand">
-      <Nav onOpenDashboard={onOpenDashboard} />
+      <Nav onOpenDashboard={onOpenDashboard} onBack={onBack} />
       <main>
         <Hero onOpenDashboard={onOpenDashboard} onOpenKarigar={onOpenKarigar} />
         <Problem />
