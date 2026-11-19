@@ -308,3 +308,11 @@
   --color-blue-ink: var(--blue-ink);
   --color-blue-line: var(--blue-line);
 }
+
+/* Next.js 16 still mounts the dev-tools badge into a <nextjs-portal> shadow root
+   even with `devIndicators: false` in next.config.ts. Page CSS cannot reach
+   inside that shadow root, so hide the host instead. The element only exists
+   while `next dev` is running, so production output is unaffected. */
+nextjs-portal {
+  display: none !important;
+}
