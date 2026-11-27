@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { Karigar } from "@prisma/client";
 
@@ -118,14 +119,49 @@ export function requireActor(req?: Request | null) {
   };
 }
 
-export function requireJeweller(req?: Request | null) {
-  return async (): Promise<ActorSession | null> => {
-    const actor = await requireActor(req)();
-    if (!actor || actor.role !== "jeweller") {
-      return null;
-    }
+// --- API route guards ---
+// Each guard returns either the authenticated ActorSession or a ready-to-return
+// NextResponse error, so route handlers can do:
+//   const actor = await requireSession(req);
+//   if (actor instanceof NextResponse) return actor;
+
+export async function requireSession(
+  req: Request
+): Promise<ActorSession | NextResponse> {
+  const actor = await getActor(req);
+  if (!actor) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return actor;
+}
+
+export async function requireJeweller(
+  req: Request
+): Promise<ActorSession | NextResponse> {
+  const actor = await requireSession(req);
+  if (actor instanceof NextResponse) return actor;
+  if (actor.role !== "jeweller") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  return actor;
+}
+
+export async function requireOwningKarigar(
+  req: Request,
+  slipId: string
+): Promise<ActorSession | NextResponse> {
+  const actor = await requireSession(req);
+  if (actor instanceof NextResponse) return actor;
+
+  const slip = await db.slip.findUnique({ where: { id: slipId } });
+  if (!slip) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (actor.role === "karigar" && slip.karigarId === actor.karigarId) {
     return actor;
-  };
+  }
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 }
 
 export function requireKarigar(req?: Request | null) {
