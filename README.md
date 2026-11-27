@@ -139,7 +139,7 @@ cd tola
 npm install
 
 # 3. Configure the database
-echo 'DATABASE_URL="file:./dev.db"' > .env
+echo 'DATABASE_URL="file:./db/custom.db"' > .env
 
 # 4. Create the SQLite database
 npm run db:push
